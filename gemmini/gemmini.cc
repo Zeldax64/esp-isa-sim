@@ -7,6 +7,34 @@
 
 REGISTER_EXTENSION(gemmini, []() { return new gemmini_t; })
 
+/*
+ * Custom operation functions
+ * These functions are used to implement custom addition and multiplications,
+ * which are used to simulate new data types.
+ * For each operation, either add or mul, a new function is created to represent
+ * an operation using two data types, which can be elem_t or acc_t.
+ */
+
+acc_t custom_a_e_add(acc_t a, elem_t b) {
+    return (a+b)&(~0x3);
+}
+
+elem_t custom_e_e_add(elem_t a, elem_t b) {
+    return (a+b)&(~0x3);
+}
+
+acc_t custom_a_a_add(acc_t a, acc_t b) {
+    return (a+b)&(~0x3);
+}
+
+elem_t custom_e_e_mul(elem_t a, elem_t b) {
+    return (a*b)&(~0x3);
+}
+
+acc_t custom_a_e_mul(acc_t a, elem_t b) {
+    return (a*b)&(~0x3);
+}
+
 void gemmini_state_t::reset()
 {
   enable = true;
@@ -372,14 +400,19 @@ void gemmini_t::compute(reg_t a_addr, reg_t bd_addr, bool preload) {
         }
 
         if (gemmini_state.mode == gemmini_state_t::WS) {
-          results->at(i).at(j) += a * gemmini_state.pe_state->at(k).at(j);
+          // Custom operation
+          //results->at(i).at(j) += a * gemmini_state.pe_state->at(k).at(j);
+          results->at(i).at(j) = custom_a_a_add(results->at(i).at(j),
+                  custom_a_e_mul(gemmini_state.pe_state->at(k).at(j), a));
         } else {
           elem_t b = 0;
           if (~bd_addr_real != 0) {
             b = k < bd_rows && j < bd_cols ? gemmini_state.spad->at(bd_addr_real + k).at(j) : 0;
           }
-
-          gemmini_state.pe_state->at(i).at(j) += a * b;
+          // Custom operation
+          //gemmini_state.pe_state->at(i).at(j) += a * b;
+          gemmini_state.pe_state->at(i).at(j) =
+              custom_a_e_add(gemmini_state.pe_state->at(i).at(j), custom_e_e_mul(a, b));
         }
       }
     }
@@ -412,7 +445,10 @@ void gemmini_t::compute(reg_t a_addr, reg_t bd_addr, bool preload) {
                   rounding_saturating_shift<output_t>(value, gemmini_state.sys_shift) :
                   rounding_saturating_shift<output_t>(value, 0);
           if (acc_accum) {
-            gemmini_state.accumulator->at(base_sp_addr + i).at(j) += shifted;
+            // Custom operation
+            //gemmini_state.accumulator->at(base_sp_addr + i).at(j) += shifted;
+            gemmini_state.accumulator->at(base_sp_addr + i).at(j) =
+                custom_a_a_add(gemmini_state.accumulator->at(base_sp_addr + i).at(j), shifted);
           } else { // Overwrite
             gemmini_state.accumulator->at(base_sp_addr + i).at(j) = shifted;
           }
